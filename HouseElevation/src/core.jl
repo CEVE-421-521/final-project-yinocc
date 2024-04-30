@@ -10,9 +10,9 @@ end
 
 """A SOW contains all the variables that may vary from one simulation to the next"""
 struct SOW{T<:Real}
-    slr::Oddo17SLR # the parameters of sea-level rise
-    surge_dist::Distributions.UnivariateDistribution # the distribution of storm surge
-    discount_rate::T # the discount rate, as a percentage (e.g., 2% is 0.02)
+    slr::DataFrame 
+    surge_dist::Distributions.UnivariateDistribution 
+    discount_rate::T 
 end
 
 """
