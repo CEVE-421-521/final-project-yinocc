@@ -1,6 +1,6 @@
 ---
 title: "Final Project Report"
-author: "Your Name (NetID)"
+author: "Jiayue Yin"
 jupyter: julia-1.10
 date: 2024-04-30
 
@@ -16,7 +16,7 @@ format:
         documentclass: article
         fontsize: 11pt
         geometry:
-            - margin=1in  
+            - margin=1.2in  
         number-sections: true
         code-line-numbers: true
     # docx: 
@@ -30,67 +30,220 @@ date-format: "ddd., MMM. D"
 # See Quarto docs: https://quarto.org/docs/authoring/footnotes-and-citations.html
 # you can export your references from Zotero, EndNote, or other reference managers
 # from Zotero you'll need https://retorque.re/zotero-better-bibtex/
-references: references.bib
+references: /Users/jiayueyin/Documents/YIN/CEVE521/final-project-yinocc/references.bib
 
 # recommended, but not required
 # you will need jupyter-cache installed
 execute: 
-  cache: true
+  cache: False
 ---
 
 # Introduction
 
-## Problem Statement
+## Problem Statement and Literature Review
 
-Clearly define the problem statement that your chosen feature aims to address.
-Explain the significance of this problem in the context of climate risk management.
+
+Rising sea levels and accompanying flood concerns endanger millions of people who live in coastal areas around the world. However, there is ambiguity surrounding its forecasts due to uncertainties about future warming and an insufficient knowledge of the complex processes and feedback mechanisms that produce sea level rise. As a result, existing models give vastly divergent forecasts of sea-level rise, even for the same temperature scenario.
+
+At present, there are many methods that have achieved results in studying sea level rise and its uncertainties. Existing sea level rise projections are broadly classified into two types: models based on physical processes and restrictions and statistical prediction models based on historical data. Because the parameters and physical processes that influence sea level rise in the real world are too complicated, models based on physical processes are sometimes prohibitively expensive to run, and the numerous physical processes cannot be compared. However, statistical models based on data only assess changing numerical trends and do not account for global changes, resulting in significant uncertainty. 
+
+@hortonExpertAssessmentSealevel2014 summarizes the differences between empirical and physical models and reviews sea level rise results obtained at different warming temperatures. @meinshausenRCPGreenhouseGas2011 combines a collection of atmospheric concentration measurements and emissions estimates for greenhouse gases (GHGs) from 1750 to 2005 with harmonized emissions anticipated by four distinct Integrated Assessment Models for 2005–2100. @jevrejevaUpperLimitSea2014 creates a probability density function for global mean sea level increase by 2100 and estimates a likelihood of less than 5%, the value they propose as the maximum limit for sea level rise.
 
 ## Selected Feature
 
-Describe the feature you have selected to add to the existing decision-support tool.
-Discuss how this feature relates to the problem statement and its potential to improve climate risk assessment.
+Global warming causes the global mean sea level to increase in two ways. First, glaciers and ice sheets around the planet are melting, adding water to the ocean. Second, the ocean's volume is increasing as the water warms. A third, much smaller, factor to sea level rise is a decrease in the amount of liquid water on land (aquifers, lakes and reservoirs, rivers, and soil moisture). People's depletion of groundwater is largely responsible for the movement of liquid water from land to ocean.
 
-# Literature Review
+In this project, the sea-level rise prediction was generated using the BRICK model[@wongBRICKV0Simple2017;@wongMimiBRICKJlJulia2022;@wongSeaLevelSocioeconomic2022], and the original house elevation problem was integrated with the model's output data.
 
-Provide a brief overview of the theoretical background related to your chosen feature.
-Cite at least two relevant journal articles to support your approach (see [Quarto docs](https://quarto.org/docs/authoring/footnotes-and-citations.html) for help with citations).
-Explain how these articles contribute to the justification of your selected feature.
+BRICK model framework largely builds on existing models and allows for projections of global mean temperature as well as regional sea levels and coastal flood risk. By combining several basic models, such as the DOECLIM climate model, the GIC-MAGICC glacier and ice cap model, the SIMPLE Greenland ice sheet model, the DAIS Antarctic ice sheet model, and the TE model calculation of the impact of ocean thermal expansion, the BRICK model forecasts changes in regional sea level and the world's average temperature. Here is the BRICK model structural diagram: ![BRICK model working diagram](working.jpg)
+
+Because the BRICK model is writed using R and Fortran90, the running detail is not concluded in this report. After testing, it was basically impossible to run the BRICK model on an ordinary PC. In my attempt, it destroyed my computer after running for more than 15 hours. The model results used in this project came from Wong's output and were post-processed and added to this project in csv format. In this project, we used two experiment data: SIMPLE, CONTROL. Each of these experiments includes three RCP levels and 10589 ensembles. As before, we utilize a random function to select the sea level rise scenarios.
+
 
 # Methodology
 
-## Implementation
+## Implementation and Validation
 
-You should make your modifications in either the `HouseElevation` or `ParkingGarage` module.
-Detail the steps taken to implement the selected feature and integrate it into the decision-support tool.
-Include code snippets and explanations where necessary to clarify the implementation process.
+All the other parameters using in this project is coming from lab 6. Except for the sea level rise data, other parameters remain unchanged, and the same process as lab6 is used to compare the difference between the NPV after replacing the sea level data and Oddo's. The validation method is same as lab 6.
 
-## Validation
+```{julia}
+using CSV
+using DataFrames
+using DataFramesMeta
+using Distributions
+using Plots
+using StatsPlots
+using Unitful
+using HouseElevation
+using XLSX
+using LaTeXStrings
+using Metaheuristics
+using Random
 
-As we have seen in labs, mistakes are inevitable and can lead to misleading results.
-To minimize the risk of errors making their way into final results, it is essential to validate the implemented feature.
-Describe the validation techniques used to ensure the accuracy and reliability of your implemented feature.
-Discuss any challenges faced during the validation process and how they were addressed.
+Plots.default(; margin=5Plots.mm)
+```
+
+```{julia}
+# reading the BRICK model data and convert to ft.
+slr_brick = CSV.read("/Users/jiayueyin/Documents/YIN/CEVE521/final-project-yinocc/data/brick.csv", DataFrame)
+first(slr_brick,10)
+years = 1850:2100
+conversion_factor = 3.28084
+for column in names(slr_brick)
+    slr_brick[!, column] *= conversion_factor
+end
+```
+
+```{julia}
+#| output: false
+house = let
+    haz_fl_dept = CSV.read("data/haz_fl_dept.csv", DataFrame) # read in the file
+    desc = "one story, Contents, fresh water, short duration"
+    row = @rsubset(haz_fl_dept, :Description == desc)[1, :] # select the row I want
+    area = 500u"ft^2"
+    height_above_gauge = 12u"ft"
+    House(row; area=area, height_above_gauge=height_above_gauge, value_usd=250_000)
+end
+
+p = ModelParams(; house=house, years=2024:2083)
+```
+
+```{julia}
+#| output: false
+
+function draw_surge_distribution()
+    μ = rand(Normal(5, 1))
+    σ = rand(Exponential(1.25))
+    ξ = rand(Normal(0.1, 0.05))
+    return GeneralizedExtremeValue(μ, σ, ξ)
+end
+
+function draw_discount_rate()
+    return rand(Normal(0.05, 0.03))
+end
+
+function draw_sow()
+    slr =  slr_brick
+    surge_params = draw_surge_distribution()
+    discount = draw_discount_rate()
+    return SOW(slr_brick, surge_params, discount)
+end
+
+Random.seed!(421565)
+N_SOW = 10_000
+N_SOW_opt = 10 # to start
+sows = [draw_sow() for _ in 1:N_SOW]
+sows_opt = first(sows, N_SOW_opt)
+```
+
+```{julia}
+#| output: false
+bounds = boxconstraints(; lb=[0.0], ub=[14.0])
+```
+
+```{julia}
+#| output: false
+function objective_function(Δh::Vector{Float64})
+    a = Action(Δh[1])
+    npvs = [run_sim(a, sow, p) for sow in sows_opt]
+    return -mean(npvs)
+end
+```
+
+```{julia}
+#| output: false
+result = optimize(objective_function, bounds)
+minimum(result)
+minimizer(result)
+```
+
+```{julia}
+#| output: false
+N_SOW_opt = 100
+sows_opt = first(sows, N_SOW_opt)
+options = Options(; time_limit=180.0, f_tol_rel=10.0)
+```
+
+```{julia}
+#| output: false
+algorithm = ECA(; options=options)
+Random.seed!(421565)
+result = optimize(objective_function, bounds, algorithm)
+```
+
+```{julia}
+#| output: false
+elevations_try = 0:0.5:14
+actions_try = Action.(elevations_try)
+
+N_more = 300
+npvs_opt = [mean([run_sim(a, sow, p) for sow in sows_opt]) for a in actions_try]
+npvs_moore = [
+    mean([run_sim(a, sow, p) for sow in first(sows, N_more)]) for a in actions_try
+]
+```
+
+```{julia}
+#| output: false
+elevations_try = 0:0.5:14
+actions_try = Action.(elevations_try)
+
+N_more = 500
+npvs_optt = [mean([run_sim(a, sow, p) for sow in sows_opt]) for a in actions_try]
+npvs_mooree = [
+    mean([run_sim(a, sow, p) for sow in first(sows, N_more)]) for a in actions_try
+]
+```
 
 # Results
 
-Present the results obtained from the enhanced decision-support tool.
-Use tables, figures, and visualizations to clearly communicate the outcomes.
-Provide sufficient detail to demonstrate how the implemented feature addresses the problem statement.
-Use the `#| output: false` and/or `#| echo: false` tags to hide code output and code cells in the final report except where showing the output (e.g.g, a plot) or the code (e.g., how you are sampling SOWs) adds value to the discussion.
-You may have multiple subsections of results, which you can create using `##`.
+First, let's compare the new sea level rise data with the original method. Here we use the average sea-level rise data from the two simulations and three senerios.
 
-# Conclusions
+```{julia}
+slr_brick = CSV.read("/Users/jiayueyin/Documents/YIN/CEVE521/final-project-yinocc/data/brick.csv", DataFrame)
+first(slr_brick,10)
+years = 1850:2100
+conversion_factor = 3.28084
+for column in names(slr_brick)
+    slr_brick[!, column] *= conversion_factor
+end
+p = plot(xlabel="Year", ylabel="Mean sea-level (ft)\nwith respect to the year 2000")
+for column in names(slr_brick)
+    plot!(years, slr_brick[!, column], label=false) 
+end
+display(p)
+```
 
-## Discussion
+Here is the sea level rise prediction[@oddoDeepUncertaintiesSea2020] from lab 6.
+![Oddo et al. (2017).](oddo.jpg)
 
-Analyze the implications of your results for climate risk management.
-Consider the context of the class themes and discuss how your findings contribute to the understanding of climate risk assessment.
-Identify any limitations of your approach and suggest potential improvements for future work.
+Both sea-level rise models have significant uncertainty beyond 2050. By 2100, BRICK predicts a sea level rise of 1.4 to 5 feet, but Oddo's model predicts 1.5 to 8 feet. At the same time, because BRICK is based on a physical model, the baseline in 2000 is always zero, but the Oddo model's sea level rise in 2000 varies around 0.
 
-## Conclusions
+```{julia}
+plot(
+    elevations_try,
+    npvs_opt ./ 1000;
+    xlabel="Elevation [ft]",
+    ylabel="NPV [1000 USD]",
+    label="First $(N_SOW_opt) SOWs",
+    marker=:circle,
+)
+plot!(elevations_try, npvs_moore ./ 1000; label="First 300 SOWs", marker=:circle)
+plot!(elevations_try, npvs_mooree ./ 1000; label="First 500 SOWs", marker=:circle)
+vline!([minimizer(result)]; label="Optimal", linestyle=:dash)
+```
 
-Summarize the key findings of your project and reiterate the significance of your implemented feature in addressing the problem statement.
-Discuss the broader implications of your work for climate risk management and the potential for further research in this area.
+Here is the NPV from lab.
+![NPV from lab 6](npv.jpg)
+
+Because the BRICK model produces fewer results, NPV values will change more between runs, whereas Oddo's approach is more robust. Because BRICK predicts a minimal sea level rise, the ideal value is equally small, less than 10 feet. After applying the new sea level rise statistics, the net present value is lower than previously, which is consistent with the data.
+
+# Conclusions and Discussion
+
+With over 600 million people living in low-elevation areas, coastal areas fewer than 10 metres above sea level, and over 150 million people living within 1 metre of high tide, expected sea-level rise will be one of the most destructive aspects of global warming. There are several ways in climate risk management for incorporating the threat of sea-level rise into models. There have been major advances in sea level rise models that use both physical processes and statistics. Based on the original lab 6, this study enhanced the sea level rise findings projected by the BRICK model using the semi-empirical model and investigated the impact of various model sea level rise data on the NPV.
+
+The results show that the BRICK model predicts a relatively moderate sea level increase, and the best house elevation height is lower than the original projection. However, after incorporating the model, the robustness drops. There are significant changes across simulations, and the BRICK model runs for an extended period of time, requiring more storage space.
+Whether it is the original model or the BRICK model results, there is a significant degree of uncertainty, demonstrating the various possibilities for future sea level rise, and there is still a lot of space for improvement in the future. When assessing climate risk changes, we should consider the influence of uncertainty and create robust models to make better decisions.
 
 # References
 
